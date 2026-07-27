@@ -1,0 +1,18 @@
+{
+  "files_written": [
+    "build.mjs",
+    "package.json",
+    "main.tf",
+    "portale-its.yaml",
+    "DEPLOY.md",
+    "impostazioni.txt",
+    "test/testportale.test.mjs"
+  ],
+  "notes": [
+    "build fixed",
+    "tests added",
+    "secrets blanked",
+    "IaC hardened",
+    "deploy simplified"
+  ]
+}
