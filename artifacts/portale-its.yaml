@@ -1,0 +1,39 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: portale its
+
+Parameters:
+  Env:
+    Type: String
+    AllowedValues: [dev, test, prod]
+    Default: test
+  Owner:
+    Type: String
+    Default: squadra-0
+
+Resources:
+  SiteBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'portale-its-sito-${Env}-${AWS::AccountId}'
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Env
+          Value: !Ref Env
+        - Key: Progetto
+          Value: portale-its
+
+Outputs:
+  Sito:
+    Value: !GetAtt SiteBucket.WebsiteURL

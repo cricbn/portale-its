@@ -43,3 +43,4 @@ Resources:
 Outputs:
   Sito:
     Value: !GetAtt SiteBucket.WebsiteURL
+
