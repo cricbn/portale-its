@@ -1,0 +1,34 @@
+# Configurazione del gate IaC (checkov).
+#
+# Il gate e bloccante: qualunque check fallito ferma la pipeline. Le uniche
+# eccezioni ammesse sono quelle dichiarate qui sotto o con un commento
+# "checkov:skip" accanto alla risorsa, sempre con motivazione scritta.
+#
+# Uso locale:  checkov --config-file .checkov.yaml
+
+directory:
+  - artifacts
+
+framework:
+  - terraform
+  - cloudformation
+
+# Policy aggiuntive scritte per questo progetto (cfr. IAC-05: nessun tag).
+external-checks-dir:
+  - .checkov/policies
+
+# Eccezioni valide per tutto il repository.
+# Quelle legate a una singola risorsa stanno accanto alla risorsa stessa.
+skip-check:
+  # Replica cross-region: non richiesta. Il sito e interamente ricostruibile
+  # dalla pipeline e le versioni precedenti sono archiviate su S3.
+  - CKV_AWS_144
+  # Cifratura S3 con KMS CMK: si usa SSE-S3 (AES256). Il contenuto del bucket
+  # del sito e pubblico per destinazione e non contiene dati personali.
+  - CKV_AWS_145
+  # Notifiche di evento su S3: nessun consumatore previsto.
+  - CKV2_AWS_62
+
+# compact riduce il rumore; i check superati restano visibili nel log di CI
+# perche il registro di cosa e stato verificato ha valore quanto i fallimenti.
+compact: true

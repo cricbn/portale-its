@@ -1,0 +1,443 @@
+name: Release
+
+# Pubblicazione del portale ITS.
+#
+# Sostituisce la procedura manuale descritta nella perizia (OPS-01..OPS-05):
+# niente FTP, niente console, niente "se da errore riprovare".
+#
+# Stadi: build -> collaudo su finto-AWS -> approvazione umana -> produzione.
+# Il rollback e il job finale, attivabile a mano con workflow_dispatch.
+#
+# L'artefatto costruito nello stadio 1 e l'UNICO che arriva in produzione:
+# non viene mai ricostruito piu avanti (cfr. BLD-01, dove il contenuto
+# pubblicato non corrispondeva a quello creduto).
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      rollback_a:
+        description: >-
+          ROLLBACK: commit SHA della release da ripubblicare (es. a1b2c3d).
+          Lasciare vuoto per una release normale.
+        required: false
+        default: ''
+      motivo:
+        description: 'Motivo del rollback (finisce nel registro delle pubblicazioni)'
+        required: false
+        default: ''
+
+concurrency:
+  group: release-produzione
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '20.11'
+  PROGETTO: artifacts
+
+jobs:
+
+  # ===========================================================================
+  # 1. BUILD - costruisce una volta sola e conserva l'artefatto.
+  # ===========================================================================
+  build:
+    if: inputs.rollback_a == ''
+    runs-on: ubuntu-latest
+    outputs:
+      versione: ${{ steps.meta.outputs.versione }}
+      ore: ${{ steps.meta.outputs.ore }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: ${{ env.PROGETTO }}/package-lock.json
+
+      - name: Installa le dipendenze dal lockfile
+        working-directory: ${{ env.PROGETTO }}
+        run: npm ci
+
+      - name: Test
+        working-directory: ${{ env.PROGETTO }}
+        run: npm test
+
+      - name: Build
+        working-directory: ${{ env.PROGETTO }}
+        run: npm run build
+
+      - name: Verifica gli artefatti prodotti
+        id: meta
+        working-directory: ${{ env.PROGETTO }}
+        run: |
+          set -euo pipefail
+          # BLD-01: il build deve produrre file veri, non uscire 0 a vuoto.
+          for f in dist/index.html dist/versione.json dist/style.css; do
+            test -s "$f" || { echo "::error::manca o e vuoto $f"; exit 1; }
+          done
+          VERSIONE=$(jq -r .versione dist/versione.json)
+          ORE=$(jq -r .ore dist/versione.json)
+          test "$VERSIONE" = "$(echo "${GITHUB_SHA}" | cut -c1-7)" \
+            || { echo "::error::versione.json non corrisponde al commit"; exit 1; }
+          # Il totale in pagina e quello nell'artefatto devono coincidere.
+          grep -q ">${ORE} h<" dist/index.html \
+            || { echo "::error::il totale ore in pagina non corrisponde a versione.json"; exit 1; }
+          echo "versione=$VERSIONE" >> "$GITHUB_OUTPUT"
+          echo "ore=$ORE" >> "$GITHUB_OUTPUT"
+          echo "### Build $VERSIONE - $ORE ore" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Conserva l'artefatto
+        uses: actions/upload-artifact@v4
+        with:
+          name: sito-${{ github.sha }}
+          path: ${{ env.PROGETTO }}/dist/
+          retention-days: 90
+          if-no-files-found: error
+
+  # ===========================================================================
+  # 2. COLLAUDO su finto-AWS (moto): l'IaC viene applicato davvero e le
+  #    risorse vengono interrogate una per una. Se l'IaC e sbagliato,
+  #    questo job fallisce e la produzione non parte.
+  # ===========================================================================
+  collaudo:
+    if: inputs.rollback_a == ''
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_DEFAULT_REGION: eu-south-1
+      AWS_ENDPOINT_URL: http://127.0.0.1:5000
+      ENV_COLLAUDO: test
+      OWNER_COLLAUDO: collaudo-ci
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scarica l'artefatto costruito
+        uses: actions/download-artifact@v4
+        with:
+          name: sito-${{ github.sha }}
+          path: dist
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.9.8'
+          terraform_wrapper: false
+
+      - name: Avvia il finto-AWS (moto)
+        run: |
+          set -euo pipefail
+          pip install --quiet 'moto[server]'
+          nohup python -m moto.server -p 5000 > moto.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:5000/moto-api/ >/dev/null && break
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:5000/moto-api/ >/dev/null \
+            || { echo "::error::moto non risponde"; cat moto.log; exit 1; }
+          echo "moto pronto"
+
+      # --- binario IaC: CloudFormation, se il template esiste ---------------
+      - name: Applica il CloudFormation (portale-its.yaml)
+        if: hashFiles('artifacts/portale-its.yaml') != ''
+        run: |
+          set -euo pipefail
+          aws cloudformation validate-template \
+            --template-body file://artifacts/portale-its.yaml >/dev/null
+          aws cloudformation deploy \
+            --stack-name portale-its-collaudo \
+            --template-file artifacts/portale-its.yaml \
+            --parameter-overrides Env="$ENV_COLLAUDO" Owner="$OWNER_COLLAUDO"
+          # Controllo di esistenza: le risorse dichiarate devono esserci.
+          for B in "portale-its-sito-${ENV_COLLAUDO}-${OWNER_COLLAUDO}" \
+                   "portale-its-log-${ENV_COLLAUDO}-${OWNER_COLLAUDO}"; do
+            aws s3api head-bucket --bucket "$B" \
+              || { echo "::error::CFN non ha creato $B"; exit 1; }
+          done
+          aws dynamodb describe-table \
+            --table-name "portale-its-iscrizioni-${ENV_COLLAUDO}-${OWNER_COLLAUDO}" >/dev/null \
+            || { echo "::error::CFN non ha creato la tabella iscrizioni"; exit 1; }
+          echo "CloudFormation applicato e risorse presenti."
+          # Nota: moto implementa solo parzialmente CloudFormation (ignora
+          # versioning, public access block, SSE e PITR di DynamoDB). Le
+          # proprieta di sicurezza si verificano quindi sul binario
+          # principale (Terraform), qui sotto, dove moto le applica davvero.
+          aws cloudformation delete-stack --stack-name portale-its-collaudo
+          curl -s -X POST http://127.0.0.1:5000/moto-api/reset >/dev/null
+
+      # --- binario IaC principale: Terraform --------------------------------
+      - name: Applica il Terraform (main.tf) - binario principale
+        if: hashFiles('artifacts/main.tf') != ''
+        id: tf
+        run: |
+          set -euo pipefail
+          # Cartella temporanea: il codice di produzione resta senza override.
+          mkdir -p /tmp/tf
+          cp artifacts/main.tf /tmp/tf/
+          # Il suffisso _override.tf e cio che fa applicare il file come
+          # override del provider invece che come configurazione aggiuntiva.
+          cp artifacts/collaudo/moto_override.tf /tmp/tf/
+          cd /tmp/tf
+          terraform init -input=false -no-color
+          terraform validate -no-color
+          terraform apply -input=false -auto-approve -no-color \
+            -var env="$ENV_COLLAUDO" -var owner="$OWNER_COLLAUDO"
+          {
+            echo "bucket_sito=$(terraform output -raw bucket_sito)"
+            echo "bucket_log=$(terraform output -raw bucket_log)"
+            echo "tabella=$(terraform output -raw tabella_iscrizioni)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Verifica che le risorse esistano davvero e siano sicure
+        run: |
+          bash artifacts/collaudo/verifica.sh \
+            "${{ steps.tf.outputs.bucket_sito }}" \
+            "${{ steps.tf.outputs.bucket_log }}" \
+            "${{ steps.tf.outputs.tabella }}" \
+            "$OWNER_COLLAUDO" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Prova di pubblicazione dell'artefatto sul finto-AWS
+        run: |
+          set -euo pipefail
+          B="${{ steps.tf.outputs.bucket_sito }}"
+          # La bucket policy nega ogni operazione con aws:SecureTransport=false.
+          # E corretta in produzione, dove il traffico e HTTPS, ma moto serve
+          # solo HTTP: sull'emulatore quella deny bloccherebbe ogni scrittura.
+          # La si rimuove QUI, dopo che verifica.sh ne ha gia accertato la
+          # presenza e la correttezza al passo precedente. Si tocca solo
+          # l'emulatore, mai il codice IaC.
+          aws s3api delete-bucket-policy --bucket "$B"
+          aws s3 sync dist/ "s3://$B/releases/${GITHUB_SHA}/" --delete
+          aws s3 sync dist/ "s3://$B/" --delete --exclude 'releases/*'
+          aws s3 cp dist/ "s3://$B/" --recursive
+          # Smoke test: quello che e stato caricato deve essere leggibile
+          # e coerente con l'artefatto (OPS-04: non piu "controllo a occhio").
+          aws s3 cp "s3://$B/versione.json" /tmp/v.json
+          diff <(jq -S . dist/versione.json) <(jq -S . /tmp/v.json) \
+            || { echo "::error::versione pubblicata diversa dall'artefatto"; exit 1; }
+          aws s3 cp "s3://$B/index.html" /tmp/i.html
+          grep -q 'Totale ore erogate' /tmp/i.html \
+            || { echo "::error::index.html pubblicato incompleto"; exit 1; }
+          echo "Collaudo di pubblicazione superato."
+
+  # ===========================================================================
+  # 3 + 4. APPROVAZIONE UMANA e PRODUZIONE.
+  #
+  # L'attesa di approvazione e data dall'Environment "production": va
+  # configurato in Settings > Environments con "Required reviewers" e con
+  # "Prevent self-review" attivo, cosi chi esegue non puo approvarsi da solo.
+  # Vedi DEPLOY.md.
+  # ===========================================================================
+  produzione:
+    if: inputs.rollback_a == ''
+    needs: [build, collaudo]
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: ${{ vars.SITE_URL }}
+    permissions:
+      contents: read
+      id-token: write   # OIDC: nessuna chiave AWS statica (cfr. SEC-07)
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scarica l'artefatto gia costruito (non si ricostruisce)
+        uses: actions/download-artifact@v4
+        with:
+          name: sito-${{ github.sha }}
+          path: dist
+
+      - name: Registra chi ha approvato
+        id: approvazione
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          APPROVATORI=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/approvals" \
+            --jq '[.[] | select(.state=="approved") | .user.login] | unique | join(", ")' 2>/dev/null || echo '')
+          [ -n "$APPROVATORI" ] || APPROVATORI='(nessuna approvazione registrata)'
+          echo "approvatori=$APPROVATORI" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Pubblicazione in produzione"
+            echo "- versione: \`${{ needs.build.outputs.versione }}\`"
+            echo "- ore pubblicate: ${{ needs.build.outputs.ore }}"
+            echo "- richiesta da: @${GITHUB_ACTOR}"
+            echo "- approvata da: $APPROVATORI"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Autenticazione AWS via OIDC
+        if: vars.SITE_BUCKET != ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: release-${{ github.run_id }}
+
+      - name: Pubblica e conserva la versione
+        if: vars.SITE_BUCKET != ''
+        env:
+          B: ${{ vars.SITE_BUCKET }}
+          VERSIONE: ${{ needs.build.outputs.versione }}
+          APPROVATORI: ${{ steps.approvazione.outputs.approvatori }}
+        run: |
+          set -euo pipefail
+          # 1) Archivia la release: la cronologia delle versioni non si perde.
+          aws s3 sync dist/ "s3://$B/releases/${GITHUB_SHA}/" --delete
+          # 2) Promuove la release ad attiva, in due passaggi.
+          #    - sync --delete rimuove dalla radice i file non piu presenti
+          #      nella release. L'origine e la cartella LOCALE: in un sync
+          #      s3->s3 il filtro --exclude 'releases/*' colpirebbe anche le
+          #      chiavi di origine, che stanno tutte sotto releases/, e non
+          #      verrebbe copiato nulla.
+          #    - cp --recursive riscrive poi il contenuto senza condizioni.
+          #      Serve perche sync salta i file di pari dimensione con origine
+          #      non piu recente: due versioni di versione.json possono pesare
+          #      gli stessi byte e differire solo nei valori, e verrebbero
+          #      considerate identiche. Vedi la stessa nota nel job rollback.
+          aws s3 sync dist/ "s3://$B/" --delete --exclude 'releases/*'
+          aws s3 cp dist/ "s3://$B/" --recursive
+          # 3) Registro delle pubblicazioni, per tracciabilita.
+          cat > /tmp/pubblicazione.json <<EOF
+          {
+            "versione": "${VERSIONE}",
+            "commit": "${GITHUB_SHA}",
+            "run": "${GITHUB_RUN_ID}",
+            "richiesta_da": "${GITHUB_ACTOR}",
+            "approvata_da": "${APPROVATORI}",
+            "data": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "tipo": "release"
+          }
+          EOF
+          aws s3 cp /tmp/pubblicazione.json "s3://$B/releases/${GITHUB_SHA}/pubblicazione.json"
+          aws s3 cp /tmp/pubblicazione.json "s3://$B/pubblicazione.json"
+
+      - name: Smoke test post-pubblicazione
+        if: vars.SITE_BUCKET != ''
+        env:
+          B: ${{ vars.SITE_BUCKET }}
+        run: |
+          set -euo pipefail
+          aws s3 cp "s3://$B/versione.json" /tmp/pubblicata.json
+          diff <(jq -S . dist/versione.json) <(jq -S . /tmp/pubblicata.json) \
+            || { echo "::error::la versione pubblicata non corrisponde all'artefatto"; exit 1; }
+          if [ -n "${{ vars.SITE_URL }}" ]; then
+            CODICE=$(curl -s -o /dev/null -w '%{http_code}' "${{ vars.SITE_URL }}")
+            test "$CODICE" = "200" || { echo "::error::il sito risponde $CODICE"; exit 1; }
+          fi
+          echo "Produzione verificata."
+
+      - name: Ambiente di produzione non configurato
+        if: vars.SITE_BUCKET == ''
+        run: |
+          echo "::warning::vars.SITE_BUCKET non impostata: pubblicazione saltata."
+          echo "L'approvazione e la catena degli stadi restano valide."
+          echo "Configurare l'Environment 'production' come descritto in DEPLOY.md."
+
+  # ===========================================================================
+  # 5. ROLLBACK - ripubblica una versione precedente gia archiviata.
+  #    Non ricostruisce nulla e non cancella la cronologia.
+  # ===========================================================================
+  rollback:
+    if: inputs.rollback_a != ''
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: ${{ vars.SITE_URL }}
+    permissions:
+      contents: read
+      id-token: write
+      actions: read
+    steps:
+      - name: Autenticazione AWS via OIDC
+        if: vars.SITE_BUCKET != ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: rollback-${{ github.run_id }}
+
+      - name: Ripubblica la versione richiesta
+        if: vars.SITE_BUCKET != ''
+        env:
+          B: ${{ vars.SITE_BUCKET }}
+          TARGET: ${{ inputs.rollback_a }}
+          MOTIVO: ${{ inputs.motivo }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Il commit indicato deve corrispondere a una release archiviata:
+          # si torna solo a versioni realmente pubblicate.
+          PREFISSO=$(aws s3 ls "s3://$B/releases/" | awk '{print $2}' | tr -d '/' \
+                     | grep -E "^${TARGET}" | head -1 || true)
+          if [ -z "$PREFISSO" ]; then
+            echo "::error::nessuna release archiviata per '${TARGET}'."
+            echo "Versioni disponibili:"
+            aws s3 ls "s3://$B/releases/" | awk '{print "  " $2}'
+            exit 1
+          fi
+          echo "Ripristino della release $PREFISSO"
+          # Si scarica la vecchia release e la si ripubblica da locale: un
+          # sync s3->s3 verso la radice applicherebbe --exclude 'releases/*'
+          # anche alle chiavi di origine, che stanno tutte sotto releases/,
+          # e non copierebbe nulla.
+          rm -rf /tmp/rollback && mkdir -p /tmp/rollback
+          aws s3 cp "s3://$B/releases/$PREFISSO/" /tmp/rollback/ --recursive
+          cp /tmp/rollback/versione.json /tmp/target.json
+          # Promuove la vecchia release senza toccare l'archivio.
+          #
+          # ATTENZIONE, trappola verificata: "aws s3 sync" da solo NON basta
+          # per un rollback. Considera un file gia allineato quando ha la
+          # stessa dimensione e l'origine non e piu recente della destinazione.
+          # Nel rollback entrambe le condizioni si verificano: due versione.json
+          # di release diverse pesano spesso gli stessi byte (cambiano solo le
+          # cifre), e "aws s3 cp" da S3 assegna al file locale la data di
+          # modifica dell'oggetto originale, quindi piu VECCHIA di quella
+          # attualmente pubblicata. Risultato osservato: index.html tornava
+          # indietro ma versione.json restava quello nuovo, pubblicando un
+          # sito incoerente.
+          # Quindi: sync --delete per togliere i file non piu presenti,
+          # e subito dopo cp --recursive che riscrive tutto senza condizioni.
+          aws s3 sync /tmp/rollback/ "s3://$B/" --delete --exclude 'releases/*'
+          aws s3 cp /tmp/rollback/ "s3://$B/" --recursive
+
+          APPROVATORI=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/approvals" \
+            --jq '[.[] | select(.state=="approved") | .user.login] | unique | join(", ")' 2>/dev/null || echo '')
+          [ -n "$APPROVATORI" ] || APPROVATORI='(nessuna approvazione registrata)'
+          cat > /tmp/pubblicazione.json <<EOF
+          {
+            "versione": "$(jq -r .versione /tmp/target.json)",
+            "commit": "${PREFISSO}",
+            "run": "${GITHUB_RUN_ID}",
+            "richiesta_da": "${GITHUB_ACTOR}",
+            "approvata_da": "${APPROVATORI}",
+            "data": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "tipo": "rollback",
+            "motivo": "${MOTIVO}"
+          }
+          EOF
+          aws s3 cp /tmp/pubblicazione.json "s3://$B/pubblicazione.json"
+
+          # Smoke test: il sito serve davvero la versione richiesta.
+          aws s3 cp "s3://$B/versione.json" /tmp/attuale.json
+          diff <(jq -S . /tmp/target.json) <(jq -S . /tmp/attuale.json) \
+            || { echo "::error::il rollback non ha prodotto la versione attesa"; exit 1; }
+
+          {
+            echo "## Rollback eseguito"
+            echo "- tornati alla release: \`${PREFISSO}\`"
+            echo "- richiesto da: @${GITHUB_ACTOR}"
+            echo "- approvato da: ${APPROVATORI}"
+            echo "- motivo: ${MOTIVO:-(non indicato)}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Ambiente di produzione non configurato
+        if: vars.SITE_BUCKET == ''
+        run: |
+          echo "::warning::vars.SITE_BUCKET non impostata: rollback simulato."
+          echo "Richiesto il ritorno a: ${{ inputs.rollback_a }}"

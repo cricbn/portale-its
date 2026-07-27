@@ -8,4 +8,17 @@ dist/
 
 # Segreti: mai versionare valori reali (cfr. SEC-01)
 .env
+.env.*
 config/impostazioni.txt
+*.pem
+*.key
+credentials
+
+# Report dei gate di sicurezza generati localmente
+gitleaks-report.json
+gitleaks-*.sarif
+checkov-report.*
+
+# Cache Python delle policy-as-code
+__pycache__/
+*.pyc

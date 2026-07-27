@@ -1,0 +1,23 @@
+# Referenti del codice.
+#
+# Risolve in parte OPS-01 e DOC-01: la perizia rilevava "Se Marco non c'e,
+# chiedere a Marco". Qui il referente e dichiarato nel repository, e la
+# revisione di una seconda persona e imposta dalla branch protection.
+#
+# ATTENZIONE: sostituire @cricbn con gli handle reali dei responsabili.
+# Il valore attuale e dedotto dall'origin del repository, non confermato.
+
+# Predefinito
+*                       @cricbn
+
+# Infrastruttura e pipeline: modifiche ad alto impatto
+/artifacts/main.tf          @cricbn
+/artifacts/portale-its.yaml @cricbn
+/.github/                   @cricbn
+/.checkov.yaml              @cricbn
+/.checkov/                  @cricbn
+/.gitleaks.toml             @cricbn
+
+# Materiale probatorio congelato: non va modificato
+/as-is/                 @cricbn
+/perizia.md             @cricbn

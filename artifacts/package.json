@@ -1,12 +1,14 @@
 {
   "name": "portale-its",
   "version": "0.0.1",
-  "description": "sito corsi",
+  "description": "Generatore statico del portale corsi ITS ICT Piemonte",
+  "license": "UNLICENSED",
   "type": "module",
   "private": true,
   "scripts": {
     "build": "node build.mjs",
-    "test": "node --test"
+    "test": "node --test \"test/*.test.mjs\"",
+    "verifica": "npm test && npm run build"
   },
   "engines": {
     "node": ">=20.11"

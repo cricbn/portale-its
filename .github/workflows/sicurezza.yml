@@ -1,0 +1,149 @@
+name: Gate di sicurezza
+
+# Controlli che devono passare prima di poter unire su main.
+# Sono i guardiani delle correzioni: impediscono che SEC-01 (segreti),
+# SEC-02/SEC-03 (bucket pubblico) e IAC-05 (nessun tag) tornino nel repository.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    # Un passaggio settimanale: le regole di rilevamento cambiano nel tempo.
+    - cron: '0 6 * * 1'
+
+permissions:
+  contents: read
+
+env:
+  GITLEAKS_VERSION: '8.30.1'
+  CHECKOV_VERSION: '3.3.8'
+
+jobs:
+
+  # ===========================================================================
+  # Segreti: albero di lavoro E storia Git.
+  # ===========================================================================
+  segreti:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # serve la storia completa per la scansione git
+
+      - name: Installa gitleaks
+        run: |
+          set -euo pipefail
+          curl -sSL -o /tmp/gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          sudo install /tmp/gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
+      - name: Segreti nell'albero di lavoro
+        run: |
+          gitleaks dir . --config .gitleaks.toml --redact --no-banner \
+            --report-format sarif --report-path gitleaks-tree.sarif
+
+      - name: Segreti nella storia Git
+        run: |
+          gitleaks git . --config .gitleaks.toml --redact --no-banner \
+            --report-format sarif --report-path gitleaks-history.sarif
+
+      # Controllo indipendente da gitleaks: il file di configurazione non deve
+      # tornare a contenere credenziali (cfr. SEC-01, "impostazioni.txt").
+      - name: impostazioni.txt deve restare un template vuoto
+        run: |
+          set -euo pipefail
+          F=artifacts/impostazioni.txt
+          [ -f "$F" ] || { echo "$F assente: nulla da controllare"; exit 0; }
+          if grep -vE '^\s*(#|$)' "$F" | grep -qE '=\s*\S'; then
+            echo "::error file=$F::impostazioni.txt contiene un valore valorizzato."
+            grep -nvE '^\s*(#|$)' "$F" | grep -E '=\s*\S'
+            exit 1
+          fi
+          echo "impostazioni.txt e un template senza valori."
+
+      - name: Conserva i report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: report-segreti
+          path: gitleaks-*.sarif
+          if-no-files-found: ignore
+
+  # ===========================================================================
+  # Infrastruttura come codice.
+  # ===========================================================================
+  iac:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.9.8'
+          terraform_wrapper: false
+
+      - name: Formattazione e validita del Terraform
+        working-directory: artifacts
+        run: |
+          set -euo pipefail
+          terraform fmt -check -diff main.tf
+          terraform init -backend=false -input=false -no-color
+          terraform validate -no-color
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Installa checkov
+        run: pip install --quiet "checkov==${CHECKOV_VERSION}" pyyaml
+
+      # Gate bloccante: le eccezioni ammesse sono solo quelle motivate in
+      # .checkov.yaml o accanto alla risorsa con "checkov:skip".
+      - name: checkov su Terraform e CloudFormation
+        run: checkov --config-file .checkov.yaml
+
+      # Il tag Owner sul template CloudFormation non e verificabile con
+      # checkov: nella 3.x il runner CloudFormation ignora le policy esterne
+      # (load_external_checks e un no-op). Si usa quindi un controllo dedicato.
+      - name: Policy tag di governance sul CloudFormation
+        run: python .github/scripts/verifica_tag_cfn.py artifacts/portale-its.yaml
+
+      # Rete di sicurezza testuale sul solo pattern di SEC-03, che e
+      # inequivocabile. Il caso "Allow con Principal *" (SEC-02) NON si
+      # controlla qui: una grep per riga non distingue un Allow da un Deny,
+      # e le policy di questo progetto usano legittimamente Principal "*"
+      # dentro statement Deny. Quel caso e coperto in modo strutturale da
+      # checkov (CKV_AWS_20 e CKV_AWS_57, verificati su entrambi i framework)
+      # e, a runtime, da artifacts/collaudo/verifica.sh nel job di collaudo.
+      - name: Public access block mai disattivato (SEC-03)
+        run: |
+          set -euo pipefail
+          if grep -nE '(block_public|BlockPublic|ignore_public|IgnorePublic|restrict_public|RestrictPublic)[a-zA-Z]*\s*[:=]\s*false' \
+             artifacts/main.tf artifacts/portale-its.yaml; then
+            echo "::error::public access block disattivato (cfr. SEC-03)"
+            exit 1
+          fi
+          echo "Public access block attivo ovunque."
+
+  # ===========================================================================
+  # Applicazione: i test sono anch'essi un gate di sicurezza (escaping SEC-04
+  # e assenza di segreti nell'HTML generato).
+  # ===========================================================================
+  applicazione:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.11'
+          cache: npm
+          cache-dependency-path: artifacts/package-lock.json
+      - working-directory: artifacts
+        run: npm ci
+      - working-directory: artifacts
+        run: npm test

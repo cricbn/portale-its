@@ -1,0 +1,29 @@
+# Policy-as-code: ogni risorsa deve dichiarare il proprio responsabile.
+#
+# Risolve IAC-05 della perizia ("Nessuna risorsa porta tag Environment/Owner/
+# CostCenter, rendendo impossibile l'attribuzione dei costi e l'identificazione
+# del responsabile") e sostiene DAT-01, dove la tabella iscrizioni risultava
+# senza titolare identificabile.
+#
+# Il tag Owner non e decorativo: e la risposta alla domanda "chi risponde di
+# questa risorsa" nel momento in cui si apre un incidente.
+
+metadata:
+  name: "Le risorse devono avere il tag Owner (perizia IAC-05, DAT-01)"
+  id: "CKV_PORTALE_1"
+  category: "GENERAL_SECURITY"
+
+definition:
+  and:
+    - cond_type: attribute
+      resource_types:
+        - aws_s3_bucket
+        - aws_dynamodb_table
+      attribute: "tags.Owner"
+      operator: "exists"
+    - cond_type: attribute
+      resource_types:
+        - aws_s3_bucket
+        - aws_dynamodb_table
+      attribute: "tags.Env"
+      operator: "exists"

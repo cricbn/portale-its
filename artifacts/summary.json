@@ -1,21 +1,44 @@
 {
-  "files_written": [
-    "build.mjs",
-    "package.json",
-    "package-lock.json",
-    "corsi.json",
-    "style.css",
-    "main.tf",
-    "portale-its.yaml",
-    "DEPLOY.md",
-    "impostazioni.txt",
-    "test/testportale.test.mjs"
+  "descrizione": "Manifesto dell'intervento di bonifica su artifacts/. Riferimento: perizia.md.",
+  "binario_iac_principale": "main.tf (Terraform). portale-its.yaml e allineato ma secondario.",
+  "file": {
+    "build.mjs": "generatore statico: escaping, validazione, percorsi robusti, fallimento esplicito",
+    "corsi.json": "dati dei corsi (320 ore complessive)",
+    "style.css": "foglio di stile, contrasto WCAG AA",
+    "package.json": "manifest, script test/build/verifica, engines.node >= 20.11",
+    "package-lock.json": "lockfile, zero dipendenze",
+    "test/testportale.test.mjs": "correttezza: totaleOre, validazione, render",
+    "test/sicurezza.test.mjs": "escaping, assenza di segreti e dati personali nell'HTML",
+    "test/artefatti.test.mjs": "end-to-end: artefatti prodotti, fallimento su dati invalidi",
+    "main.tf": "infrastruttura (binario principale)",
+    "portale-its.yaml": "infrastruttura in CloudFormation, allineata a main.tf",
+    "collaudo/moto-override.tf": "override di collaudo su finto-AWS, fuori dal codice di produzione",
+    "collaudo/verifica.sh": "controlli runtime sulle risorse applicate",
+    "impostazioni.txt": "template senza credenziali",
+    "DEPLOY.md": "procedura di pubblicazione, verifica e rollback"
+  },
+  "criticita_perizia_risolte": [
+    "BLD-01 guardia di ingresso corretta su Windows e Linux",
+    "BLD-02 totale ore corretto: 320",
+    "BLD-03 percorsi risolti dalla posizione dello script",
+    "BLD-04 lockfile presente, left-pad rimossa, engines dichiarato",
+    "BLD-05 test con node:test e integrazione continua",
+    "SEC-04 escaping HTML su tutti i valori interpolati",
+    "SEC-02 SEC-03 bucket privato, public access block su quattro controlli, policy non pubblica",
+    "DAT-02 validazione di corsi.json con uscita in errore",
+    "IAC-01 due definizioni allineate, binario principale dichiarato",
+    "IAC-02 nessun endpoint locale nel codice di produzione",
+    "IAC-04 tabella iscrizioni con cifratura, PITR e tag",
+    "IAC-05 tag Owner ed Env imposti da policy-as-code",
+    "OPS-01 rilascio automatico dalla pipeline",
+    "OPS-02 versionamento, archivio releases/ e rollback eseguibile",
+    "OPS-04 smoke test post-pubblicazione al posto del controllo a occhio",
+    "OPS-05 procedura riscritta: non si ripristina mai un bucket pubblico",
+    "FE-01 FE-02 contrasto e semantica della tabella"
   ],
-  "notes": [
-    "build fixed",
-    "tests added",
-    "secrets blanked",
-    "IaC hardened",
-    "deploy simplified"
+  "dovuto_ma_non_eseguibile_dal_repository": [
+    "SEC-01 rotazione dei segreti gia presenti nella storia Git: atto amministrativo sul provider",
+    "SEC-05 TLS tramite CloudFront e certificato ACM: fuori dal perimetro di questo modulo",
+    "DAT-01 classificazione del contenuto della tabella iscrizioni: attivita conoscitiva"
   ]
 }

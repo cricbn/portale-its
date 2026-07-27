@@ -1,4 +1,20 @@
-FTP_HOST=
-FTP_USER=
-FTP_PASS=
-api_token=
+# impostazioni.txt - TEMPLATE. Non inserire qui valori reali.
+#
+# Questo file e versionato e serve solo a documentare quali impostazioni
+# esistono. Deve restare con i valori vuoti: il gate gitleaks in CI fallisce
+# se qualcuno vi scrive una credenziale (cfr. SEC-01 della perizia).
+#
+# Dove stanno i valori reali:
+#   - Credenziali AWS: nessuna. La pipeline si autentica con OIDC verso un
+#     ruolo IAM dedicato (secret AWS_ROLE_ARN nell'Environment GitHub).
+#   - Parametri non segreti: variables dell'Environment GitHub (AWS_REGION,
+#     SITE_BUCKET, ENV_NAME, OWNER).
+#
+# FTP: rimosso. La pubblicazione avviene solo tramite la pipeline
+# .github/workflows/release.yml (cfr. DEPLOY.md). Non esiste piu un canale FTP.
+
+# --- parametri di ambiente (non segreti, valorizzati da GitHub Environment) ---
+AWS_REGION=
+SITE_BUCKET=
+ENV_NAME=
+OWNER=

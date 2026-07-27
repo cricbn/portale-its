@@ -1,0 +1,30 @@
+title = "portale-its - gate sui segreti"
+
+[extend]
+useDefault = true
+
+# =============================================================================
+# ECCEZIONI - lette insieme al paragrafo "Segreti storici" di DEPLOY.md.
+#
+# I segreti rilevati da SEC-01 (password FTP e token ghp_...) sono nella storia
+# Git ai commit 84ecad8, 47908ad e d55b0b9. Non possono essere rimossi senza
+# riscrivere la storia, e non e questo il rimedio: la perizia stabilisce che
+# vanno considerati compromessi e ROTATI (azione 0.1). La rotazione e un atto
+# amministrativo sul provider, non una modifica al repository.
+#
+# Le due sedi in cui compaiono ancora sono materiale probatorio congelato:
+#   - as-is/    e lo stato analizzato dalla perizia. Modificarlo invaliderebbe
+#               le evidenze e i riferimenti di riga citati nel documento.
+#   - perizia.md cita i valori come prova del rilievo.
+#
+# L'eccezione e quindi limitata a questi due percorsi e a nient'altro:
+# qualunque segreto introdotto altrove - artifacts/, .github/, radice - fa
+# fallire il gate. E la regola che impedisce a SEC-01 di ripresentarsi.
+# =============================================================================
+
+[allowlist]
+description = "Materiale probatorio congelato della perizia (cfr. SEC-01)"
+paths = [
+  '''^as-is/''',
+  '''^perizia\.md$''',
+]
