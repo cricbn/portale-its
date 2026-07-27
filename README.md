@@ -37,7 +37,7 @@ sono applicate le correzioni di codice della Fase 1:
 - `BLD-02` totale ore corretto: **320**
 - `BLD-03` percorsi risolti da `import.meta.url`, non dalla CWD
 - `BLD-04` lockfile presente, `left-pad` rimossa, `engines.node` dichiarato.
-- `BLD-05` test con `node:test` e script `test`
+- `BLD-05` test con `node:test` e script `test`.
 - `SEC-04` escaping HTML su tutti i valori interpolati
 - `DAT-02` validazione di `corsi.json` con uscita in errore
 - `FE-01` / `FE-02` contrasto WCAG AA e semantica della tabella
