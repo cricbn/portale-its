@@ -33,7 +33,7 @@ Termina con codice diverso da zero se `corsi.json` non supera la validazione.
 Rispetto al piano di [perizia.md](perizia.md#6-piano-di-azione), in `artifacts/`
 sono applicate le correzioni di codice della Fase 1:
 
-- `BLD-01` guardia di ingresso corretta — il build produce output su Windows
+- `BLD-01` guardia di ingresso corretta — il build produce output su Windowss
 - `BLD-02` totale ore corretto: **320**
 - `BLD-03` percorsi risolti da `import.meta.url`, non dalla CWD
 - `BLD-04` lockfile presente, `left-pad` rimossa, `engines.node` dichiarato.
