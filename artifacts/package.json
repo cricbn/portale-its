@@ -7,7 +7,7 @@
   "private": true,
   "scripts": {
     "build": "node build.mjs",
-    "test": "node --test \"test/*.test.mjs\"",
+    "test": "node --test test",
     "verifica": "npm test && npm run build"
   },
   "engines": {
