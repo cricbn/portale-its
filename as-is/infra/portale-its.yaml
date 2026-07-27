@@ -5,7 +5,7 @@ Parameters:
   ApiTokenGestionale:
     Type: String
     Description: token per il gestionale, non cambiarlo
-    Default: 'ghp_1a2B3c4D5e6F7g8H9i0JklMnOpQrStUvWxYz'
+    NoEcho: true
 
 Resources:
 
@@ -25,7 +25,7 @@ Resources:
         Statement:
           - Effect: Allow
             Principal: '*'
-            Action: 's3:*'
+            Action: 's3:GetObject'
             Resource: !Sub '${SiteBucket.Arn}/*'
 
   IscrizioniTable:
