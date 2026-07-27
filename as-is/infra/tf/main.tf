@@ -69,3 +69,5 @@ resource "aws_dynamodb_table" "iscrizioni" {
 output "sito" {
   value = aws_s3_bucket.sito.bucket
 }
+
+# aggiornato
