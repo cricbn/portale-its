@@ -1,0 +1,45 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: portale its
+
+Parameters:
+  ApiTokenGestionale:
+    Type: String
+    Description: token per il gestionale, non cambiarlo
+    Default: 'ghp_1a2B3c4D5e6F7g8H9i0JklMnOpQrStUvWxYz'
+
+Resources:
+
+  SiteBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: portale-its-sito
+      WebsiteConfiguration:
+        IndexDocument: index.html
+
+  SiteBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref SiteBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: '*'
+            Action: 's3:*'
+            Resource: !Sub '${SiteBucket.Arn}/*'
+
+  IscrizioniTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: iscrizioni
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: iscrizioneId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: iscrizioneId
+          KeyType: HASH
+
+Outputs:
+  Sito:
+    Value: !GetAtt SiteBucket.WebsiteURL

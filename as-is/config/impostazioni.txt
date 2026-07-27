@@ -1,0 +1,10 @@
+Impostazioni portale (NON cancellare)
+
+FTP_HOST=ftp.portale-its.example
+FTP_USER=segreteria
+FTP_PASS=Segreteria2023!
+
+# chiave per l'integrazione col gestionale
+api_token = ghp_1a2B3c4D5e6F7g8H9i0JklMnOpQrStUvWxYz
+
+Ultimo aggiornamento: Marco, marzo 2024
