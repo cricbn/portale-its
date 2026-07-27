@@ -7,7 +7,7 @@ const OUT = path.join(HERE, "dist");
 const DATA = path.join(HERE, "corsi.json");
 const CSS = path.join(HERE, "style.css");
 
-function esc(s) {
+export function esc(s) {
   return String(s)
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { render, totaleOre } from '../build.mjs';
+import { render, totaleOre, esc } from '../build.mjs';
 
 const dati = JSON.parse(readFileSync(new URL('../corsi.json', import.meta.url), 'utf8'));
 
@@ -12,7 +12,7 @@ test('totale ore corretto', () => {
 test('render include tutti i corsi', () => {
   const html = render(dati, 'locale');
   for (const c of dati.corsi) {
-    assert.ok(html.includes(c.titolo));
+    assert.ok(html.includes(esc(c.titolo)));
     assert.ok(html.includes(`${c.ore} h`));
   }
   assert.ok(html.includes('Totale ore erogate'));

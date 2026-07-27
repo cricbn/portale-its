@@ -2,6 +2,9 @@
   "files_written": [
     "build.mjs",
     "package.json",
+    "package-lock.json",
+    "corsi.json",
+    "style.css",
     "main.tf",
     "portale-its.yaml",
     "DEPLOY.md",

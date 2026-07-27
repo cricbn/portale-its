@@ -3,9 +3,13 @@
   "version": "0.0.1",
   "description": "sito corsi",
   "type": "module",
+  "private": true,
   "scripts": {
     "build": "node build.mjs",
     "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20.11"
   },
   "devDependencies": {}
 }

@@ -1,0 +1,11 @@
+node_modules/
+dist/
+
+# Stato Terraform: puo contenere in chiaro i valori delle variabili (cfr. IAC-03)
+*.tfstate
+*.tfstate.*
+.terraform/
+
+# Segreti: mai versionare valori reali (cfr. SEC-01)
+.env
+config/impostazioni.txt
