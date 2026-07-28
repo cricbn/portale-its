@@ -80,7 +80,7 @@ che quello che si legge sia esattamente quello che si e costruito.
 ### [3] Approvazione umana
 
 La pipeline si ferma prima della produzione. L'attesa e imposta dall'Environment
-GitHub `production` (vedi [§5](#5-configurazione-una-tantum)), configurato con
+GitHub `production` (vedi (#5-configurazione-una-tantum)), configurato con
 *required reviewers* e *prevent self-review*: **chi ha avviato il rilascio non
 puo approvarlo da solo.**
 
@@ -90,7 +90,7 @@ Chi approva viene registrato nel riepilogo del run e nel file
 ### [4] Produzione
 
 Scarica l'artefatto dello stadio 1 e lo pubblica su S3 tramite un ruolo IAM
-assunto via OIDC — **nessuna chiave AWS statica esiste nel repository o nei
+assunto via OIDC - **nessuna chiave AWS statica esiste nel repository o nei
 secret**.
 
 La pubblicazione avviene in due tempi, e questo e cio che rende possibile il
@@ -107,12 +107,12 @@ quello dell'artefatto, e il sito deve rispondere `200`. Se non e cosi, il job
 fallisce.
 
 > Perche non basta "guardare a occhio" (perizia OPS-04): i due difetti piu
-> gravi del progetto — pagina vecchia ripubblicata e totale ore errato — erano
+> gravi del progetto - pagina vecchia ripubblicata e totale ore errato - erano
 > entrambi invisibili a un controllo visivo.
 
 ### [5] Rollback
 
-Vedi [§4](#4-rollback).
+Vedi (#4-rollback).
 
 ---
 
@@ -127,7 +127,7 @@ soluzione.
 | Il job **Build** fallisce | Leggere l'errore. Se dice `BUILD FALLITA: ...`, i dati in `corsi.json` non sono validi: correggerli e ripetere il merge. |
 | Il job **Collaudo** fallisce | L'IaC non e conforme. Correggere `main.tf` / `portale-its.yaml`. **Non aggirare il controllo.** |
 | Un bucket "da errore sui permessi" | **Non modificare i permessi e non rendere pubblico nulla.** Quell'errore e il controllo di sicurezza che funziona. Aprire una segnalazione al referente. |
-| Il sito e sbagliato dopo la pubblicazione | Eseguire il **rollback** ([§4](#4-rollback)), poi indagare con calma. |
+| Il sito e sbagliato dopo la pubblicazione | Eseguire il **rollback** (#4-rollback), poi indagare con calma. |
 | Il gate **segreti** fallisce | Un segreto sta per entrare nel repository. Non forzare: rimuoverlo, e **ruotare** il valore esposto. |
 
 ---
@@ -147,7 +147,7 @@ nulla e senza perdere la cronologia.
 
 Cosa succede: la pipeline cerca `releases/<commit>/` sul bucket, e se la trova
 la ripromuove a versione attiva. Se il commit indicato non corrisponde a una
-release realmente archiviata, il job fallisce ed elenca quelle disponibili —
+release realmente archiviata, il job fallisce ed elenca quelle disponibili -
 non si torna a versioni mai pubblicate.
 
 L'archivio `releases/` **non viene toccato**: la cronologia resta completa e si

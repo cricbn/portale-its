@@ -1,11 +1,11 @@
 AWSTemplateFormatVersion: '2010-09-09'
 
 # =============================================================================
-# DESCRIZIONE SECONDARIA, ALLINEATA. Non e la fonte di verita.
+# DESCRIZIONE SECONDARIA, ALLINEATA. Non è la fonte di verità.
 #
-# Il binario principale e main.tf (Terraform), come da azione 3.1 della perizia.
+# Il binario principale è main.tf (Terraform), come da azione 3.1 della perizia.
 # Questo template descrive le STESSE risorse, con gli stessi nomi e gli stessi
-# controlli di sicurezza, ed e usato dal collaudo su finto-AWS. Se i due file
+# controlli di sicurezza, ed è usato dal collaudo su finto-AWS. Se i due file
 # divergono, vale main.tf e questo va riallineato.
 #
 # Risolve IAC-01: prima esistevano due definizioni con impostazioni di

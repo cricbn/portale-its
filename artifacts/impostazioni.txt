@@ -1,8 +1,8 @@
 # impostazioni.txt - TEMPLATE. Non inserire qui valori reali.
 #
-# Questo file e versionato e serve solo a documentare quali impostazioni
+# Questo file è versionato e serve solo a documentare quali impostazioni
 # esistono. Deve restare con i valori vuoti: il gate gitleaks in CI fallisce
-# se qualcuno vi scrive una credenziale (cfr. SEC-01 della perizia).
+# se qualcuno vi scrive una credenziale.
 #
 # Dove stanno i valori reali:
 #   - Credenziali AWS: nessuna. La pipeline si autentica con OIDC verso un
